@@ -18,7 +18,7 @@ function! MBlazeMailPreview(mailfile)
     echo 
     let b:mailfile = a:mailfile
     let l:appendable = extend(
-        \ extend(systemlist("maildir_summary.py " . a:mailfile),
+        \ extend(systemlist("mhdr " . a:mailfile),
         \ systemlist("mshow -t " . a:mailfile)), [])
     call append("^", l:appendable)
     call cursor(1,1)

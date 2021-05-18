@@ -23,6 +23,10 @@ So far the _boxes_view_, renders a _tree_ with the names of all the boxes and in
 
 All _list views_ should have a `conceal` value from `/^/` to `/\t,/` that indicates the message file this row is representing.
 
+The variable `g:MBlazeChannelsDir` is defaulted to `$HOME/.cache/mail`, this should point to a directory where you have all your _channels_ stored.
+
+> This is working with `isync` to synchronize mailboxes, but the part that actually concerns the plug-in is just the _maildir_ management, not the actual synchronization.
+
 
 ### TODO
 
@@ -45,3 +49,12 @@ All _list views_ should have a `conceal` value from `/^/` to `/\t,/` that indica
  - [ ] Write Documentation
  - [ ] Re-factor to `filetypes`
 
+# Install
+
+You should clone this under your `pack` directory, and then execute the `packadd` statement with the corresponding directory name, to include the plugin.
+
+# Questions
+
+ - Is this in it's current state compatible with regular `vim`?
+ - Are there serious benefits of rewriting this in `lua`?
+ - Is there another `email` plugin I should be looking at for inspiration?
