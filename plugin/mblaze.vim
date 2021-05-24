@@ -1,115 +1,319 @@
-let g:MBlaze = {}
-let g:MBlazeChannelsDir = $HOME . "/.cache/mail"
-let g:MBlazeChannels = {}
+"
+" There are three types of buffers we need to handle:
+"   - Mail Boxes List (`MBlazeMailBoxes`)
+"   - Messages List   (`MBlazeMailList`)
+"   - Message View    (`MBlazeMessage`)
+"
+" FileTypes:
+"
+"                                       mblazemailboxes-mappings
+"  This buffer allows only for `j` `k` navigation and `<cr>` to 
+"  select a box to see it's list.
+"
+"                                        mblazemaillist-mappings
+"  This buffer allows only for `j` `k` navigation and `<cr>` to 
+"  select an email to read it in a `split`.
+"
+"                                         mblazemessage-mappings
+"  - Pending
+"
+" Tab Mode:
+"
+"   This Mode is invoked with the command `:MBlazeTab` (a call to
+"   `MBlazeTab`).
+"   It will save the window id at `t:mail_list_win` to use that default window 
+"   view for the mail list.
+"   Then it will toggle (by default there is no `t:mail_boxes_win` variable, so it
+"   will open a `split` at `topleft`. (right side of the screen), with a 
+"   tree for all your mail boxes at the directory specified at
+"   `g:mail_directory`.
+"
+" let g:TreeDrawShift_list = [ " ─  ", " │  ", " └─ ", " ├─ "]
+"
 
-let g:MBlazeScanFormat = "'%R\t,%c%u%r %-3n %20D %20f %t %2i%150s'"
-"let g:MBlazeScanFormat = "'%c%u%r %-3n %20D %20f %t %2i%50s'"
+let g:TreeDrawShift = ["  ", "  ", "  ", "  "]
+let g:mail_directory = $HOME . "/.cache/mail"
+let g:MBlazeScanFormat = "\"%R\t,%c%u%r %-3n %20D %20f %t %2i%150s\""
 
-function! MBlazeMailListNav(direction)
+function! GoToWinOrVSplit(winid)
+endfun
+
+function! TreeFold(lnum)
+    let l:curline = getline(a:lnum)
+    let l:len = len(l:curline)
+    let l:cur = 0
+    for i in range(l:len/4)
+        let l:curblock = l:curline[i*4:(i+1)*4-1]
+        if index(g:TreeDrawShift_list, l:curblock) != -1
+            let l:cur += 1
+        endif 
+    endfor
+    return l:cur
+endfun
+
+function! TreeDraw(data, level, shift)
+    let l:returnable = []
+    if len(a:data) == 0
+        return l:returnable
+    endif
+    let l:keys = sort(keys(a:data), 'i')
+    if len(keys) > 1 
+        for key in keys[:-2]
+            let l:shift = a:shift . g:TreeDrawShift[3]. key
+            let l:tree = TreeDraw(a:data[key], a:level + 1, a:shift . g:TreeDrawShift[1])
+            call add(l:returnable, l:shift)
+            call extend(l:returnable, l:tree) 
+        endfor
+    endif
+    let key = l:keys[-1]
+    let l:shift = a:shift . g:TreeDrawShift[2]. key
+    let l:tree = TreeDraw(a:data[key], a:level + 1, a:shift . g:TreeDrawShift[0])
+    call add(l:returnable, l:shift)
+    call extend(l:returnable, l:tree) 
+    return l:returnable
+endfun
+
+function! ListBufferNav(direction)
     let l:pos = getcurpos()
     let l:pos[1] += a:direction
-    let l:lnum = l:pos[1]
     call setpos('.', l:pos)
-    call MBlazeMailListSelect()
 endfun
 
-function! MBlazeMailPreview(mailfile)
+function! MBlazeMailMessageLoad()
+    let l:message_file = b:message_file
     enew!
-    echo 
-    let b:mailfile = a:mailfile
-    let l:appendable = extend(
-        \ extend(systemlist("mhdr " . a:mailfile),
-        \ systemlist("mshow -t " . a:mailfile)), [])
+    let b:message_file = l:message_file
+    echo b:message_file
+    let l:appendable = systemlist("mshow " . b:message_file)
+    " let b:status = systemlist("mscan " . b:message_file)[0]
     call append("^", l:appendable)
     call cursor(1,1)
-    setl tabstop=8
-    let l:status = systemlist("mscan " . a:mailfile)[0]
+    silent! setlocal nonumber nowrap nomodifiable nomodified readonly tabstop=8
+    let t:message_view = win_getid()
+    au BufUnload <buffer> unlet t:message_view
 endfun
 
-function! MBlazeMailListSelect()
-    let l:curwin = win_getid()
+function! MBlazeMailBoxesMappings()
+    nnoremap <buffer><nowait><silent> l <c-w>l
+    nnoremap <buffer><nowait><silent> h <c-w>h
+    nnoremap <buffer><nowait><silent> <cr> :call MBlazeMailBoxesSelect()<cr>
+    nnoremap <buffer><nowait><silent> j :call ListBufferNav(1)<cr>
+    nnoremap <buffer><nowait><silent> k  :call ListBufferNav(-1)<cr>
+endfun
+
+function! MBlazeMailListNav(direction)
+    call ListBufferNav(a:direction)
+    if exists("b:nav_preview")
+        call MBlazeMailListSelect()
+    endif
+endfun
+
+function! MBlazeMailListClearAndCarry()
+    let l:mail_directory = b:mail_directory
+    unlet b:mail_directory
+    if exists("b:mail_list_filter")
+        let l:mail_list_filter = b:mail_list_filter
+        unlet b:mail_list_filter
+    endif
+    if exists("b:mail_list_ignore")
+        let l:mail_list_ignore = b:mail_list_ignore
+        unlet b:mail_list_ignore
+    endif 
+    if exists("b:mail_list_date_start")
+        let l:mail_list_date_start = b:mail_list_date_start
+        unlet b:mail_list_date_start
+    endif 
+    if exists("b:mail_list_date_end")
+        let l:mail_list_date_end = b:mail_list_date_end
+        unlet b:mail_list_date_end
+    endif 
+    enew!
+    let b:mail_directory = l:mail_directory
+    if exists("l:mail_list_filter")
+        let b:mail_list_filter = l:mail_list_filter
+    endif
+    if exists("l:mail_list_ignore")
+        let b:mail_list_ignore = l:mail_list_ignore
+    endif 
+    if exists("l:mail_list_date_start")
+        let b:mail_list_date_start = l:mail_list_date_start
+    endif
+    if exists("l:mail_list_date_end")
+        let b:mail_list_date_end = l:mail_list_date_end
+    endif 
+endfun
+
+function! MBlazeMailListGetFile()
     let l:lnum = line(".")
     let l:box = getline(".")
     let l:tab_idx = strridx(l:box, "\t")
-    let l:msg_file = l:box[:l:tab_idx]
-    if !exists("t:mblaze_preview_win")
-        split
-        let t:mblaze_preview_win = win_getid()
-        let l:prev_buffer = bufnr("%")
-    endif
-    call win_gotoid(t:mblaze_preview_win)
-    call MBlazeMailPreview(l:msg_file)
-    silent! setlocal nonumber nowrap nomodifiable nomodified readonly
-    call win_gotoid(l:curwin)
+    return l:box[:l:tab_idx]
 endfun
 
-function! MBlazeMailListStatus()
-    if exists("b:dir") && exists("g:MBlazeChannelsDir")
-        return b:dir[len(g:MBlazeChannelsDir):]
-    endif
-    return b:dir
-endfun
-
-function! MBlazeMailListShow(dir)
-    enew!
-    let b:dir = a:dir
-    let l:command = "mlist " . a:dir . " | msort -r -d  | mscan -f " . g:MBlazeScanFormat
-    let l:mail_list = systemlist(l:command)
-    call append(0, l:mail_list)
-    setl statusline=%{MBlazeMailListStatus()}
-    silent! setlocal nonumber nowrap nomodifiable nomodified readonly
-    syn region mblazeMailFile start=/^/ end=/\t,/ conceal
-    setl conceallevel=3
-    setl concealcursor=nvic
-    call cursor(1,1)
+function! MBlazeMailListMappings()
+    nnoremap <buffer><nowait><silent> <F5> :call MBlazeMailListLoad()<cr>
     nnoremap <buffer><nowait><silent> l <c-w>l
     nnoremap <buffer><nowait><silent> h <c-w>h
     nnoremap <buffer><nowait><silent> <cr> :call MBlazeMailListSelect()<cr>
     nnoremap <buffer><nowait><silent> j :call MBlazeMailListNav(1)<cr>
     nnoremap <buffer><nowait><silent> k  :call MBlazeMailListNav(-1)<cr>
+    command -nargs=+ -buffer MailListDateRange call MBlazeMailListFilterDate(<f-args>)
 endfun
 
+function! MBlazeMailListCommandArgs()
+    let l:largs = " "
+    let l:pargs = " "
+    let l:sargs = "-r -d"
+    if exists("b:mail_list_filter")
+        let l:largs = toupper(b:mail_list_filter[0])
+        if exists("b:mail_list_ignore")
+            let l:largs = tolower(b:mail_list_filter[0])
+        endif
+        let l:largs = " -" . l:largs
+    endif
+    if exists("b:mail_list_date_start")
+        let l:pargs_test = " date >= \"" . b:mail_list_date_start . "\""
+    end
+    if exists("b:mail_list_date_end")
+        if exists("l:pargs_test")
+            let l:pargs_test .= " && "
+        else
+            let l:pargs_test = ""
+        endif
+        let l:pargs_test .= " date <= \"" . b:mail_list_date_end . "\""
+    end
+    if exists("l:pargs_test")
+        let l:pargs = "-t '" . l:pargs_test . "'"
+    endif
+    let returnable = [l:largs, l:pargs, l:sargs]
+    echo returnable 
+    return returnable 
+endfun
 
-function! MBlazeLoadChannels(root)
+function! MBlazeMailListLoad()
+    call MBlazeMailListClearAndCarry()
+    let [l:largs, l:pargs, l:sargs] = MBlazeMailListCommandArgs()
+    let l:command = (
+      \ "mlist" . l:largs . " " . b:mail_directory . 
+      \ " | mpick    " . l:pargs . 
+      \ " | msort    " . l:sargs . 
+      \ " | mscan -f " . g:MBlazeScanFormat )
+    echom l:command
+    let l:mail_list = systemlist(l:command)
+    "echo len(l:mail_list)
+    "echo l:mail_list
+    call append(0, l:mail_list)
+    delete
+    call cursor(1,1)
+    call MBlazeMailListMappings()
+    call MBlazeMailListStatusLine()
+    syn region mblazeMailFile start=/^/ end=/\t,/ conceal
+    silent! setlocal conceallevel=3
+    silent! setlocal concealcursor=nvic
+    silent! setlocal nonumber nowrap nomodifiable nomodified readonly
+endfun
+
+function! MBlazeMailListSelect()
+    let l:curwin = win_getid()
+    let l:message_file = MBlazeMailListGetFile()
+    if !exists("t:message_view")
+        split
+        let t:message_view= win_getid()
+    endif
+    call win_gotoid(t:message_view)
+    let b:message_file = l:message_file
+    call MBlazeMailMessageLoad()
+    call win_gotoid(l:curwin)
+endfun
+
+function! MBlazeMailListStatusLine()
+    let b:statusline_mail_directory = ""
+    let b:statusline_date_range = ""
+    let b:statusline_filter = ""
+    if exists("b:mail_directory") 
+        if exists("g:mail_directory")
+            let b:statusline_mail_directory =b:mail_directory[len(g:mail_directory):]
+        else
+            let b:statusline_mail_directory =b:mail_directory
+        endif
+    endif
+    if exists("b:mail_list_filter")
+        let b:statusline_filter = b:mail_list_filter
+        if exists("b:mail_list_ignore")
+            let b:statusline_filter .= "(ignore)"
+        else
+            let b:statusline_filter .= "(only)"
+        endif
+    endif
+    if exists("b:mail_list_date_end")
+        let b:statusline_date_range .= b:mail_list_date_end
+    endif
+    if exists("b:mail_list_date_start")
+        if exists("b:mail_list_date_end")
+            let b:statusline_date_range .= " / "
+        endif
+        let b:statusline_date_range .= b:mail_list_date_start
+    endif
+    silent! setl statusline=MailBox
+    silent! setl statusline +=:%{b:statusline_mail_directory}%=
+    silent! setl statusline +=%{b:statusline_date_range}
+    silent! setl statusline +=\ %{b:statusline_filter}
+    silent! setl statusline +=%l/%L
+    return
+    if exists("b:mail_list_date_start")
+        let l:returnable .= "\-From:" . b:mail_list_date_start
+    endif
+    if exists("b:mail_list_date_end")
+        let l:returnable .= "\-To:" . b:mail_list_date_end
+    endif
+endfun
+
+function! MBlazeLoadChannels(mail_directory)
     let l:returnable = {}
-    let l:ls_command = "ls " .  shellescape(a:root) . " | sort --ignore-case"
+    let l:root = a:mail_directory
+    let l:ls_command = "ls " .  shellescape(l:root) . " | sort --ignore-case"
     let l:maildir_list = systemlist(l:ls_command)
     if index(l:maildir_list, 'cur') == -1
         for l:dir in l:maildir_list
-            let l:subdir = a:root . '/' . l:dir
+            let l:subdir = l:root . '/' . l:dir
             let l:returnable[dir] = MBlazeLoadChannels(l:subdir)
         endfor
     endif
     return l:returnable
 endfun
 
-function! MBlazeMailTab()
-    tabnew
-    let t:list_win = win_getid()
-    call MBlazeMailBoxesSetupContent()
-    let t:boxes_win = win_getid()
+function! MBlazeMailListOpen(mail_directory)
+    echo a:mail_directory
+    let b:mail_directory = g:mail_directory . "/" . a:mail_directory
+    call MBlazeMailListLoad()
 endfun
 
-function! MBlazeMailBoxesSetupContent()
+function! MBlazeMailBoxesLoad()
     exec "topleft vertical 25 new"
-    setlocal statusline=Mail
-    setlocal statusline+=\ Boxes
-    let l:maildirs = MBlazeLoadChannels(g:MBlazeChannelsDir)
+    let l:maildirs = MBlazeLoadChannels(g:mail_directory)
     for [key, value] in items(l:maildirs)
         let l:tree = TreeDraw(value, 0, '')
         call append("^", l:tree)
         call append("^", key)
     endfor
-    call append("^", "\" Channels")
-    silent! setlocal 
-        \ wfw
-        \ nonumber
-        \ nomodifiable
-        \ nomodified
-        \ readonly
-    setl tabstop=2 shiftwidth=2 foldmethod=indent foldlevel=99 wfw
+    "call append("^", "\" Channels")
+    silent! setlocal statusline=Mail\ Boxes
+    silent! setlocal wfw nonumber nomodifiable nomodified readonly
+    silent! setlocal tabstop=2 shiftwidth=2 foldmethod=indent foldlevel=99 wfw
     call cursor(1,1)
-    nnoremap <buffer><nowait><silent> <cr> :call MBlazeMailBoxesSelect()<cr>
+    call MBlazeMailBoxesMappings()
+    let t:mail_boxes_win = win_getid()
+    au BufUnload <buffer> unlet t:mail_boxes_win 
+endfun
+
+
+function! MBlazeMailBoxesToggle()
+    if exists("t:mail_boxes_win")
+        call win_gotoid(t:mail_boxes_win)
+        bd!
+    else
+        call MBlazeMailBoxesLoad()
+    endif
 endfun
 
 function! MBlazeMailBoxesIndentLevel(key, box)
@@ -126,6 +330,27 @@ function! MBlazeMailBoxesIndentLevel(key, box)
     return [a:key, a:box, l:level]
 endfun
 
+
+function! MBlazeMailListFilterDate(...)
+    if !exists("a:1")
+        let  b:mail_list_date_start = 0
+        unlet  b:mail_list_date_start 
+        return
+    endif
+    let b:mail_list_date_start = systemlist(
+        \ "date --iso --date=\"" . a:1 .  "\""
+        \ )[0]
+    if exists("a:2")
+        let b:mail_list_date_end = systemlist(
+            \ "date --iso --date=\"" . a:2 .  "\""
+            \ )[0]
+    else
+        let  b:mail_list_date_end= 0
+        unlet  b:mail_list_date_end
+    endif
+    call MBlazeMailListLoad()
+endfun
+
 function! MBlazeMailBoxesSelect()
     let l:lnum = line(".")
     let l:box = getline(".")
@@ -136,100 +361,26 @@ function! MBlazeMailBoxesSelect()
             let l:res = add(l:res, elem) 
         endif
     endfor
-    let l:maildir = ""
+    let l:mail_directory = ""
     for elem in reverse(l:res)
         let l:boxname = elem[1][elem[-1]:]
-        let l:maildir .=  l:boxname. "/"
+        let l:mail_directory.=  l:boxname. "/"
     endfor
-    call MBlazeListLoad(l:maildir)
-endfun
-
-function! MBlazeListLoad(mailbox)
-    call win_gotoid(t:list_win)
-    enew!
-    let l:target_dir = g:MBlazeChannelsDir . "/" . a:mailbox
-    call MBlazeMailListShow(l:target_dir)
-endfun
-
-function! TreeFold(lnum)
-    let l:curline = getline(a:lnum)
-    let l:len = len(l:curline)
-    let l:cur = 0
-    for i in range(l:len/4)
-        let l:curblock = l:curline[i*4:(i+1)*4-1]
-        if index(g:TreeDrawShift_list, l:curblock) != -1
-            let l:cur += 1
-        endif 
-    endfor
-    return l:cur
-endfun
-
-"let g:TreeDrawShift_list = [
-"    \ " ─  ",
-"    \ " │  ",
-"    \ " ├─ ",
-"    \ " └─ ",
-"    \ ]
-let g:TreeDrawShift_list = [
-    \ "  ",
-    \ "  ",
-    \ "  ",
-    \ "  ",
-    \ ]
-
-let g:TreeDrawShift_zero  = g:TreeDrawShift_list[0]
-let g:TreeDrawShift_one   = g:TreeDrawShift_list[1]
-let g:TreeDrawShift_three = g:TreeDrawShift_list[2]
-let g:TreeDrawShift_two   = g:TreeDrawShift_list[3]
-
-function! TreeFold()
-    let l:current_line = getline(v:lnum)
-    if matchstr(l:current_line, "├", 0)
-        return "="
+    if exists("t:mail_list_win") && getwininfo(t:mail_list_win) != []
+        call win_gotoid(t:mail_list_win)
+    else
+        vsp | enew!
+        let t:mail_list_win = win_getid()
     endif
-    if matchstr(l:current_line, "└", 0)
-        return "="
-    endif
+    call MBlazeMailListOpen(l:mail_directory)
 endfun
 
-function! TreeDraw(data, level, shift)
-    let l:returnable = []
-    if len(a:data) == 0
-        return l:returnable
-    endif
-    let l:keys = sort(keys(a:data), 'i')
-    if len(keys) > 1 
-        for key in keys[:-2]
-            let l:shift = a:shift . g:TreeDrawShift_three. key
-            call add(l:returnable, l:shift)
-            call extend(l:returnable, TreeDraw(a:data[key], a:level + 1, a:shift . g:TreeDrawShift_one)) 
-        endfor
-    endif
-    let key = l:keys[-1]
-    let l:shift = a:shift . g:TreeDrawShift_two . key
-    call add(l:returnable, l:shift)
-    call extend(l:returnable, TreeDraw(a:data[key], a:level + 1, a:shift . g:TreeDrawShift_zero)) 
-    return l:returnable
+function! MBlazeMailTab()
+    tabnew
+    let t:mail_list = win_getid()
+    call MBlazeMailBoxesToggle()
 endfun
 
-" startify buffer options
-"  silent! setlocal
-"        \ bufhidden=wipe
-"        \ colorcolumn=
-"        \ foldcolumn=0
-"        \ matchpairs=
-"        \ modifiable
-"        \ nobuflisted
-"        \ nocursorcolumn
-"        \ nocursorline
-"        \ nolist
-"        \ nonumber
-"        \ noreadonly
-"        \ norelativenumber
-"        \ nospell
-"        \ noswapfile
-"        \ signcolumn=no
-"        \ synmaxcol&
-
-"command! -nargs=1 MBlazeList call 
-command! -nargs=0 MBlazeTab call MBlazeMailTab()
+command! -nargs=0 MailTab call MBlazeMailTab()
+command! -nargs=0 MailBoxes call MBlazeMailBoxesToggle()
+command! -nargs=1 MailBox call MBlazeMailListOpen(<f-args>)

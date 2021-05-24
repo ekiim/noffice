@@ -45,16 +45,48 @@ The variable `g:MBlazeChannelsDir` is defaulted to `$HOME/.cache/mail`, this sho
 
 # General To do
 
- - [ ] Include `vader` testing
  - [ ] Write Documentation
  - [ ] Re-factor to `filetypes`
+ - [ ] Include `vader` testing
 
 # Install
 
-You should clone this under your `pack` directory, and then execute the `packadd` statement with the corresponding directory name, to include the plugin.
+You should clone this under your `pack` directory, and then execute the `packadd` statement with the corresponding directory name, to include the plug-in.
 
-# Questions
+## Mail Configuration
+
+> Sending Mail still pending
+
+This plug-in is though to work with `isync`/`mbsync` `Maildir` directories.
+
+> It should work with another mail synchronization program that stores your 
+> email as `Maildir`.
+
+Once you have the `Maildir` directory structure, make sure you have installed [`mblaze`](https://github.com/leahneukirchen/mblaze).
+
+By default this plug-in will look for your mail at `~/.cache/mail` (If your email is at another place you can overwrite the variable `g:mail_directory` with the path to a `Maildir` directory).
+
+The command `MailBoxes` will toggle a window created at `topleft` (left side of the screen), with a _tree_ of all your _maildir directories_, you can navigate as usual,
+with `jk`, except that `hl` will move you the next window that direction, you select
+a directory with `<cr>`, and it will get a window to display the corresponding list
+of mail.
+
+Alternative you can execute the command `MailBox` with the _relative path_ to the target _maildir_ from `g:mail_directory`.
+
+While navigating a mail list navigation is the same as in the window for `MailBoxes`.
+Opening an _email_ is done by pressing `<cr>`.
+
+> Pending mappings to action over email in list.
+
+While navigating a `MailBox` window, you can set a _date range_ to filter the list with the command `MailListDateRange`, with **no** arguments it will _reset_ the date filter, with **one** argument will use it as _lower bound_, with **two** it will use it the first as _lower_ the second as _upper_ when comparing the date.
+
+You can open a message by selecting in a list.
+
+> Pending mappings to action over message files.
+
+# Questions for users
 
  - Is this in it's current state compatible with regular `vim`?
  - Are there serious benefits of rewriting this in `lua`?
  - Is there another `email` plugin I should be looking at for inspiration?
+
